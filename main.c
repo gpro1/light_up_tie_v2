@@ -11,19 +11,23 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
-#define ENABLE_PWM 	TIMSK |= (1<<OCIE0A)|(1<<OCIE0B)|(1<<TOIE0);
-#define DISABLE_PWM TIMSK &= ~((1<<OCIE0A)|(1<<OCIE0B)|(1<<TOIE0));
+#define ENABLE_PWM 	TIMSK |= (1<<OCIE0A)|(1<<OCIE0B)|(1<<TOIE0)
+#define DISABLE_PWM TIMSK &= ~((1<<OCIE0A)|(1<<OCIE0B)|(1<<TOIE0))
 
-#define PWM_MIN 8;
-#define PWM_MAX 247;
+#define PWM_MIN 8
+#define PWM_MAX 247
 
-#define LED_EN_0 0x01;
-#define LED_EN_1 0x02;
-#define LED_EN_2 0x04;
-#define LED_EN_3 0x08;
-#define LED_EN_4 0x10;
+#define LED_EN_0 0x01
+#define LED_EN_1 0x02
+#define LED_EN_2 0x04
+#define LED_EN_3 0x08
+#define LED_EN_4 0x10
 
 uint8_t led_enable;
+
+uint8_t en_01;
+uint8_t en_23;
+uint8_t en_4;
 
 //These values should stay between PWM_MIN and PWM_MAX;
 struct led_pwm_status{
@@ -45,6 +49,15 @@ struct led_pwm_status{
 */
 
 const uint8_t infinityFrames[6] = {LED_EN_0, LED_EN_1, LED_EN_4, LED_EN_2, LED_EN_3, LED_EN_4};
+const uint8_t shimmer[128] = {8, 14, 20, 25, 31, 37, 43, 49, 54, 60, 66, 71, 77, 83, 88, 94, 99, 104,
+						  110, 115, 120, 125, 130, 135, 140, 145, 150, 154, 159, 163, 168, 172, 176,
+						  180, 184, 188, 192, 196, 199, 203, 206, 209, 212, 215, 218, 221, 223, 226,
+						  228, 230, 232, 234, 236, 238, 239, 241, 242, 243, 244, 245, 246, 246, 247,
+						  247, 247, 247, 247, 247, 246, 245, 245, 244, 243, 242, 240, 239, 238, 236,
+					      234, 232, 230, 228, 225, 223, 220, 217, 215, 212, 208, 205, 202, 198, 195,
+						  191, 187, 183, 179, 175, 171, 167, 162, 158, 153, 149, 144, 139, 134, 129,
+						  124, 119, 114, 109, 103, 98, 92, 87, 81, 76, 70, 65, 59, 53, 47, 42, 36,
+						  28, 21, 15};
 
 volatile uint8_t pwm_state = 0;
 volatile uint8_t mode = 0;
@@ -80,7 +93,7 @@ int main(void)
 
 	sei();
 	
-	mode = 1;
+	mode = 3;
 	
     while (1) 
     {
@@ -121,7 +134,7 @@ int main(void)
 					mode_init = 0;
 				}
 			
-				if(TIFR & OCF1A)
+				if(TIFR & (1<<OCF1A))
 				{
 					
 					if(increasing1)
@@ -167,7 +180,7 @@ int main(void)
 					mode_init = 0;
 				}
 							
-				if(TIFR & OCF1A)
+				if(TIFR & (1<<OCF1A))
 				{
 					led_enable = infinityFrames[frame_cnt]; //Set new animation frame
 					
@@ -185,20 +198,79 @@ int main(void)
 
 				break;
 				
-			case 3:
+			case 3: //SHIMMER
 				if (mode_init)
 				{
-						
+					pwm.led0 = PWM_MIN;
+					pwm.led1 = PWM_MIN;
+					pwm.led2 = PWM_MIN;
+					pwm.led3 = PWM_MIN;
+					pwm.led4 = PWM_MIN;				
+					
+					led_enable = LED_EN_0 + LED_EN_1 + LED_EN_2 + LED_EN_3 + LED_EN_4;
+					
+					//ENABLE_PWM;
+					
+					increasing1 = 1;
+					
 					mode_init = 0;
 				}
 							
-				if(TIFR & OCF1A)
+				if(TIFR & (1<<OCF1A))
 				{
-								
-								
-					OCR1A = 0x14; //20 x 512us = 10.24ms period
+					if (frame_cnt < 32)
+					{
+						led_enable = LED_EN_1;
+						pwm.led1 = shimmer[frame_cnt];
+						frame_cnt++;
+					}
+					else if(frame_cnt < 64)
+					{
+						led_enable = LED_EN_0 + LED_EN_1 + LED_EN_3 + LED_EN_4;
+						pwm.led0 = shimmer[frame_cnt - 32];
+						pwm.led1 = shimmer[frame_cnt];
+						pwm.led3 = shimmer[frame_cnt - 32];
+						pwm.led4 = shimmer[frame_cnt - 32];
+						frame_cnt++;
+					}
+					else if(frame_cnt < 128)
+					{
+						led_enable = LED_EN_0 + +LED_EN_1 + LED_EN_2 + LED_EN_3 + LED_EN_4;
+						pwm.led0 = shimmer[frame_cnt - 32];
+						pwm.led1 = shimmer[frame_cnt];
+						pwm.led2 = shimmer[frame_cnt - 64];
+						pwm.led3 = shimmer[frame_cnt - 32];
+						pwm.led4 = shimmer[frame_cnt - 32];	
+						frame_cnt++;
+					}
+					else if(frame_cnt < 160)
+					{
+						led_enable = LED_EN_0 + LED_EN_2 + LED_EN_3 + LED_EN_4;
+						pwm.led0 = shimmer[frame_cnt - 32];
+						pwm.led2 = shimmer[frame_cnt - 64];
+						pwm.led3 = shimmer[frame_cnt - 32];
+						pwm.led4 = shimmer[frame_cnt - 32];
+						frame_cnt++;
+					}
+					else if( frame_cnt < 192)
+					{
+						led_enable = LED_EN_2;
+						pwm.led2 = shimmer[frame_cnt - 64];
+						frame_cnt++;
+					}
+					else if( frame_cnt < 255)
+					{
+						led_enable = 0;
+						frame_cnt++;
+					}
+					else
+					{
+						frame_cnt = 0;
+					}
+									
+					OCR1A = 0x07; //7 x 512us = 3.584ms period
 					TIFR |= (1<<OCF1A);
-					TCNT1 = 0x00;
+					TCNT1 = 0x00;					
 				}
 
 				break;
@@ -207,6 +279,10 @@ int main(void)
 				break;
 			
 		}
+		
+		en_01 = led_enable & (LED_EN_0 + LED_EN_1);
+		en_23 = led_enable & (LED_EN_2 + LED_EN_3);
+		en_4  = led_enable & (LED_EN_4);
 		
     }
 }
@@ -253,21 +329,24 @@ ISR(TIMER0_OVF_vect)
 	{
 		case 0:
 			//PORTB |= (1<<PB2)|(1<<PB3);
-			PORTB |= led_enable & (LED_EN_2 + LED_EN_3);
+			//PORTB |= led_enable & (LED_EN_2 + LED_EN_3);
+			PORTB = en_23;
 			OCR0A = pwm.led4;
 			//OCR0B = ; disable this later?
 			pwm_state = 1;
 			break;
 		case 1:
 			//PORTB |= (1<<PB4);
-			PORTB |= led_enable & (LED_EN_4);
+			//PORTB |= led_enable & (LED_EN_4);
+			PORTB = en_4;
 			OCR0A = pwm.led0;
 			OCR0B = pwm.led1;
 			pwm_state = 2;
 			break;
 		case 2:
 			//PORTB |= (1<<PB0)|(1<<PB1);
-			PORTB |= led_enable & (LED_EN_0 + LED_EN_1);
+			//PORTB |= led_enable & (LED_EN_0 + LED_EN_1);
+			PORTB = en_01;
 			OCR0A = pwm.led2;
 			OCR0B = pwm.led3;
 			pwm_state = 0;
