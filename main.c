@@ -100,7 +100,7 @@ int main(void)
 
 	sei();
 	
-	mode = 4;
+	mode = 5;
 	
     while (1) 
     {
@@ -282,7 +282,7 @@ int main(void)
 
 				break;
 				
-			case 4:
+			case 4: //RANDOM
 				if (mode_init)
 				{
 					pwm.led0 = PWM_MIN;
@@ -338,7 +338,7 @@ int main(void)
 				}
 				break;
 			
-			case 5:
+			case 5: //MIDDLE PULSE
 				if (mode_init)
 				{
 					pwm.led0 = PWM_MIN;
@@ -351,18 +351,53 @@ int main(void)
 					
 					//ENABLE_PWM;
 					
+					increasing1 = 1;
 					
 					mode_init = 0;
 				}
 				
 				if(TIFR & (1<<OCF1A))
 				{
+					if (frame_cnt < 32)
+					{
+						led_enable = LED_EN_4;
+						pwm.led4 = shimmer[frame_cnt];
+						frame_cnt++;
+					}
+					else if(frame_cnt < 128)
+					{
+						led_enable = LED_EN_0 + LED_EN_1 + LED_EN_2 + LED_EN_3 + LED_EN_4;
+						pwm.led0 = shimmer[frame_cnt - 32];
+						pwm.led1 = shimmer[frame_cnt - 32];
+						pwm.led2 = shimmer[frame_cnt - 32];
+						pwm.led3 = shimmer[frame_cnt - 32];
+						pwm.led4 = shimmer[frame_cnt];
+						frame_cnt++;
+					}
+					else if(frame_cnt < 160)
+					{
+						led_enable = LED_EN_0 + LED_EN_1 + LED_EN_2 + LED_EN_3;
+						pwm.led0 = shimmer[frame_cnt - 32];
+						pwm.led1 = shimmer[frame_cnt - 32];
+						pwm.led2 = shimmer[frame_cnt - 32];
+						pwm.led3 = shimmer[frame_cnt - 32];
+						frame_cnt++;
+					}
+					else if(frame_cnt < 255)
+					{
+						led_enable = 0;
+						frame_cnt++;
+					}
+					else
+					{
+						frame_cnt = 0;
+					}
 					
-
-					OCR1A = 0x14; //20 x 512us = 10.24ms period
+					OCR1A = 0x03; //7 x 512us = 3.584ms period
 					TIFR |= (1<<OCF1A);
 					TCNT1 = 0x00;
 				}
+
 			
 				break;
 			
