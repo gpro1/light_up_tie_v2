@@ -23,6 +23,10 @@
 #define LED_EN_3 0x08
 #define LED_EN_4 0x10
 
+uint32_t xorshift32(uint32_t *state);
+
+uint32_t xorshift32_state;
+
 uint8_t led_enable;
 
 uint8_t en_01;
@@ -67,8 +71,11 @@ int main(void)
 	uint8_t mode_init = 1;
 	uint8_t increasing1 = 0;
 	uint8_t frame_cnt = 0;
+	uint8_t temp = 0;
 	
 	//uint8_t increasing2 = 1;
+	
+	xorshift32_state = 0x1337; //seed for random
 	
 	pwm.led0 = 8;
 	pwm.led1 = 8;
@@ -93,7 +100,7 @@ int main(void)
 
 	sei();
 	
-	mode = 3;
+	mode = 4;
 	
     while (1) 
     {
@@ -274,6 +281,90 @@ int main(void)
 				}
 
 				break;
+				
+			case 4:
+				if (mode_init)
+				{
+					pwm.led0 = PWM_MIN;
+					pwm.led1 = PWM_MIN;
+					pwm.led2 = PWM_MIN;
+					pwm.led3 = PWM_MIN;
+					pwm.led4 = PWM_MIN;
+					
+					led_enable = LED_EN_0;
+					
+					//ENABLE_PWM;
+					temp = 0;
+					
+					increasing1 = 1;
+					
+					mode_init = 0;
+				}
+				
+				if(TIFR & (1<<OCF1A))
+				{
+					
+					if(increasing1)
+					{
+						pwm.led0++;
+						pwm.led1++;
+						pwm.led2++;
+						pwm.led3++;
+						pwm.led4++;
+					}
+					else
+					{
+						pwm.led0--;
+						pwm.led1--;
+						pwm.led2--;
+						pwm.led3--;
+						pwm.led4--;
+					}
+					
+					if(pwm.led0 < PWM_MIN)
+					{
+						increasing1 = 1;
+						temp = xorshift32(&xorshift32_state)%5;
+						led_enable = (1<<temp);
+					}
+					else if(pwm.led0 > PWM_MAX)
+					{
+						increasing1 = 0;
+					}
+					
+					OCR1A = 0x01; //1 x 512us = 512us period
+					TIFR |= (1<<OCF1A);
+					TCNT1 = 0x00;
+				}
+				break;
+			
+			case 5:
+				if (mode_init)
+				{
+					pwm.led0 = PWM_MIN;
+					pwm.led1 = PWM_MIN;
+					pwm.led2 = PWM_MIN;
+					pwm.led3 = PWM_MIN;
+					pwm.led4 = PWM_MIN;
+					
+					led_enable = LED_EN_0 + LED_EN_1 + LED_EN_2 + LED_EN_3 + LED_EN_4;
+					
+					//ENABLE_PWM;
+					
+					
+					mode_init = 0;
+				}
+				
+				if(TIFR & (1<<OCF1A))
+				{
+					
+
+					OCR1A = 0x14; //20 x 512us = 10.24ms period
+					TIFR |= (1<<OCF1A);
+					TCNT1 = 0x00;
+				}
+			
+				break;
 			
 			default:
 				break;
@@ -285,6 +376,17 @@ int main(void)
 		en_4  = led_enable & (LED_EN_4);
 		
     }
+}
+
+//XORSHIFT32 algorithm for pseudo random numbers
+uint32_t xorshift32(uint32_t *state){
+	
+	uint32_t x = *state;
+	x ^= x << 13;
+	x ^= x >> 17;
+	x ^= x << 5;
+	*state = x;
+	return x;
 }
 
 ISR(TIMER0_COMPA_vect)
