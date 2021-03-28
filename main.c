@@ -53,6 +53,7 @@ struct led_pwm_status{
 */
 
 const uint8_t infinityFrames[6] = {LED_EN_0, LED_EN_1, LED_EN_4, LED_EN_2, LED_EN_3, LED_EN_4};
+const uint8_t scannerFrames[4] = {(LED_EN_0 + LED_EN_1), LED_EN_4, (LED_EN_2 + LED_EN_3), LED_EN_4};
 const uint8_t shimmer[128] = {8, 14, 20, 25, 31, 37, 43, 49, 54, 60, 66, 71, 77, 83, 88, 94, 99, 104,
 						  110, 115, 120, 125, 130, 135, 140, 145, 150, 154, 159, 163, 168, 172, 176,
 						  180, 184, 188, 192, 196, 199, 203, 206, 209, 212, 215, 218, 221, 223, 226,
@@ -72,6 +73,7 @@ int main(void)
 	uint8_t increasing1 = 0;
 	uint8_t frame_cnt = 0;
 	uint8_t temp = 0;
+	uint32_t modeCount = 0;
 	
 	//uint8_t increasing2 = 1;
 	
@@ -100,7 +102,7 @@ int main(void)
 
 	sei();
 	
-	mode = 5;
+	mode = 6;
 	
     while (1) 
     {
@@ -397,9 +399,40 @@ int main(void)
 					TIFR |= (1<<OCF1A);
 					TCNT1 = 0x00;
 				}
-
-			
 				break;
+				
+			case 6:	//HORIZONTAL SCANNER
+			if (mode_init)
+			{
+				pwm.led0 = PWM_MAX;
+				pwm.led1 = PWM_MAX;
+				pwm.led2 = PWM_MAX;
+				pwm.led3 = PWM_MAX;
+				pwm.led4 = PWM_MAX;
+				
+				frame_cnt = 0;
+				led_enable = 0;
+				
+				mode_init = 0;
+			}
+			
+			if(TIFR & (1<<OCF1A))
+			{
+				led_enable = scannerFrames[frame_cnt]; //Set new animation frame
+				
+				frame_cnt++; //increment frame
+				
+				if (frame_cnt >= 4) //Loop back on final frame
+				{
+					frame_cnt = 0;
+				}
+				
+				OCR1A = 0xff; //255 x 512us = 130.56ms period
+				TIFR |= (1<<OCF1A);
+				TCNT1 = 0x00;
+			}
+
+			break;
 			
 			default:
 				break;
@@ -409,6 +442,18 @@ int main(void)
 		en_01 = led_enable & (LED_EN_0 + LED_EN_1);
 		en_23 = led_enable & (LED_EN_2 + LED_EN_3);
 		en_4  = led_enable & (LED_EN_4);
+		
+		modeCount++;
+		if(modeCount > 1000000)
+		{
+			modeCount = 0;
+			mode++;
+			if(mode > 6)
+			{
+				mode = 0;
+			}
+			mode_init = 1;
+		}
 		
     }
 }
