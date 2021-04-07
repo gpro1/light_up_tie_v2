@@ -11,9 +11,6 @@
 #include <avr/interrupt.h>
 #include <util/delay.h>
 
-#define ENABLE_PWM 	TIMSK |= (1<<OCIE0A)|(1<<OCIE0B)|(1<<TOIE0)
-#define DISABLE_PWM TIMSK &= ~((1<<OCIE0A)|(1<<OCIE0B)|(1<<TOIE0))
-
 #define PWM_MIN 8
 #define PWM_MAX 247
 
@@ -22,6 +19,8 @@
 #define LED_EN_2 0x04
 #define LED_EN_3 0x08
 #define LED_EN_4 0x10
+
+#define MODE_MAX 7
 
 uint32_t xorshift32(uint32_t *state);
 
@@ -54,6 +53,10 @@ struct led_pwm_status{
 
 const uint8_t infinityFrames[6] = {LED_EN_0, LED_EN_1, LED_EN_4, LED_EN_2, LED_EN_3, LED_EN_4};
 const uint8_t scannerFrames[4] = {(LED_EN_0 + LED_EN_1), LED_EN_4, (LED_EN_2 + LED_EN_3), LED_EN_4};
+const uint8_t discoFrames[13] = {LED_EN_2, LED_EN_4, LED_EN_1, LED_EN_4, LED_EN_2, LED_EN_4, LED_EN_1, 0,
+								 (LED_EN_2 + LED_EN_1), (LED_EN_0 + LED_EN_3), (LED_EN_2 + LED_EN_1), (LED_EN_0 + LED_EN_3), 0};
+	
+//=ROUND(239 * SIN(A129/41)) + 8
 const uint8_t shimmer[128] = {8, 14, 20, 25, 31, 37, 43, 49, 54, 60, 66, 71, 77, 83, 88, 94, 99, 104,
 						  110, 115, 120, 125, 130, 135, 140, 145, 150, 154, 159, 163, 168, 172, 176,
 						  180, 184, 188, 192, 196, 199, 203, 206, 209, 212, 215, 218, 221, 223, 226,
@@ -73,9 +76,6 @@ int main(void)
 	uint8_t increasing1 = 0;
 	uint8_t frame_cnt = 0;
 	uint8_t temp = 0;
-	uint32_t modeCount = 0;
-	
-	//uint8_t increasing2 = 1;
 	
 	xorshift32_state = 0x1337; //seed for random
 	
@@ -90,19 +90,46 @@ int main(void)
 	
 	ACSR |= (1<<ACD); //Disable analog comparator to save power
 	
-    DDRB |= (1<<DDB4) | (1<<DDB3) | (1<<DDB2) | (1<<DDB1) | (1<<DDB0);
+    DDRB |= (1<<DDB4) | (1<<DDB3) | (1<<DDB2) | (1<<DDB1) | (1<<DDB0); //All pins to outputs
 	PORTB = 0;
 	
 	TCCR0A |= (1<<WGM01) | (1<<WGM00); //Fast PWM Mode, TOP = 0xFF
 	TCCR0B |= (1<<CS01); //Timer 0 prescaler: 8
 	
-	TIMSK |= (1<<OCIE0A)|(1<<OCIE0B)|(1<<TOIE0);
+	TIMSK |= (1<<OCIE0A)|(1<<OCIE0B)|(1<<TOIE0); //Enable timer 0 interrupts for pwm
 	
 	TCCR1 = (1<<CS13)|(1<<CS12)|(1<<CS10); //timer 1 prescaler: 4096 (period = 512 us)
+		
+	OCR1A = 0x02; //Wait 1ms before booting up
+	TIFR |= (1<<OCF1A);
+	TCNT1 = 0x00;
+	while(!(TIFR & (1<<OCF1A)));
+	
+	//Read mode from EEPROM
+	EEARH = 0x00;
+	EEARL = 0x00;
+	EECR |= (1<<EERE);
+	mode = EEDR;
+	
+	if(mode > MODE_MAX)
+	{
+		mode = 0;
+	}
+	
+	//Write next mode to EEPROM
+	EECR = 0x00; //Atomic mode
+	EEARH = 0x00;
+	EEARL = 0x00;
+	
+	EEDR = mode + 1;
+	
+	EECR |= (1<<EEMPE);
+	EECR |= (1<<EEPE);
+	
+	//Wait for EEPROM write to finish
+	while(EECR & (1<<EEPE));
 
 	sei();
-	
-	mode = 6;
 	
     while (1) 
     {
@@ -119,8 +146,6 @@ int main(void)
 					
 					led_enable = LED_EN_0 + LED_EN_1 + LED_EN_2 + LED_EN_3 + LED_EN_4;
 					
-					//ENABLE_PWM;
-					
 					mode_init = 0;
 				}
 				break;
@@ -135,8 +160,6 @@ int main(void)
 					pwm.led4 = PWM_MIN;
 					
 					led_enable = LED_EN_0 + LED_EN_1 + LED_EN_2 + LED_EN_3 + LED_EN_4;
-					
-					//ENABLE_PWM;
 					
 					increasing1 = 1;	
 					
@@ -351,8 +374,6 @@ int main(void)
 					
 					led_enable = LED_EN_0 + LED_EN_1 + LED_EN_2 + LED_EN_3 + LED_EN_4;
 					
-					//ENABLE_PWM;
-					
 					increasing1 = 1;
 					
 					mode_init = 0;
@@ -434,6 +455,63 @@ int main(void)
 
 			break;
 			
+			case 7:	//Staying Alive
+			if (mode_init)
+			{
+				pwm.led0 = PWM_MAX;
+				pwm.led1 = PWM_MAX;
+				pwm.led2 = PWM_MAX;
+				pwm.led3 = PWM_MAX;
+				pwm.led4 = PWM_MAX;
+							
+				frame_cnt = 0;
+				led_enable = 0;
+							
+				temp = 0;
+							
+				mode_init = 0;
+			}
+						
+			if(TIFR & (1<<OCF1A))
+			{
+				led_enable = discoFrames[frame_cnt]; //Set new animation frame
+				
+				if (frame_cnt >= 12) //Loop back on final frame
+				{
+					if(temp == 4)
+					{
+						frame_cnt = 0;
+						temp = 0;
+					}
+					else
+					{
+						temp++;
+					}
+				}
+				else if(frame_cnt == 1 || frame_cnt == 3 || frame_cnt == 5)
+				{
+					frame_cnt++;
+				}
+				else
+				{
+					if(temp == 1)
+					{
+						frame_cnt++;
+						temp = 0;
+					}
+					else
+					{
+						temp++;
+					}
+				}
+							
+				OCR1A = 0xff; //255 x 512us = 130.56ms period
+				TIFR |= (1<<OCF1A);
+				TCNT1 = 0x00;
+			}
+
+			break;
+			
 			default:
 				break;
 			
@@ -441,20 +519,7 @@ int main(void)
 		
 		en_01 = led_enable & (LED_EN_0 + LED_EN_1);
 		en_23 = led_enable & (LED_EN_2 + LED_EN_3);
-		en_4  = led_enable & (LED_EN_4);
-		
-		modeCount++;
-		if(modeCount > 1000000)
-		{
-			modeCount = 0;
-			mode++;
-			if(mode > 6)
-			{
-				mode = 0;
-			}
-			mode_init = 1;
-		}
-		
+		en_4  = led_enable & (LED_EN_4);		
     }
 }
 
@@ -510,24 +575,17 @@ ISR(TIMER0_OVF_vect)
 	switch(pwm_state)
 	{
 		case 0:
-			//PORTB |= (1<<PB2)|(1<<PB3);
-			//PORTB |= led_enable & (LED_EN_2 + LED_EN_3);
 			PORTB = en_23;
 			OCR0A = pwm.led4;
-			//OCR0B = ; disable this later?
 			pwm_state = 1;
 			break;
 		case 1:
-			//PORTB |= (1<<PB4);
-			//PORTB |= led_enable & (LED_EN_4);
 			PORTB = en_4;
 			OCR0A = pwm.led0;
 			OCR0B = pwm.led1;
 			pwm_state = 2;
 			break;
 		case 2:
-			//PORTB |= (1<<PB0)|(1<<PB1);
-			//PORTB |= led_enable & (LED_EN_0 + LED_EN_1);
 			PORTB = en_01;
 			OCR0A = pwm.led2;
 			OCR0B = pwm.led3;
