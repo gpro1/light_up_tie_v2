@@ -138,11 +138,11 @@ int main(void)
 			case 0: //ALL LEDS ON			
 				if (mode_init)
 				{
-					pwm.led0 = PWM_MAX;
-					pwm.led1 = PWM_MAX;
-					pwm.led2 = PWM_MAX;
-					pwm.led3 = PWM_MAX;
-					pwm.led4 = PWM_MAX;
+					pwm.led0 = 192;
+					pwm.led1 = 192;
+					pwm.led2 = 192;
+					pwm.led3 = 192;
+					pwm.led4 = 192;
 					
 					led_enable = LED_EN_0 + LED_EN_1 + LED_EN_2 + LED_EN_3 + LED_EN_4;
 					
