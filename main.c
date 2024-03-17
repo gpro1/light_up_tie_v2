@@ -14,11 +14,11 @@
 #define PWM_MIN 8
 #define PWM_MAX 247
 
-#define LED_EN_0 0x01
-#define LED_EN_1 0x02
-#define LED_EN_2 0x04
-#define LED_EN_3 0x08
-#define LED_EN_4 0x10
+#define LED_EN_0 0x08
+#define LED_EN_1 0x10
+#define LED_EN_2 0x02
+#define LED_EN_3 0x01
+#define LED_EN_4 0x04
 
 #define MODE_MAX 7
 
@@ -539,13 +539,13 @@ ISR(TIMER0_COMPA_vect)
 	switch(pwm_state)
 	{
 		case 0:
-			PORTB &= ~(1<<PB0);
+			PORTB &= ~(1<<PB3);
 			break;
 		case 1:
-			PORTB &= ~(1<<PB2);
+			PORTB &= ~(1<<PB0);
 			break;
 		case 2:
-			PORTB &= ~(1<<PB4);
+			PORTB &= ~(1<<PB2);
 			break;
 		default:
 			break;
@@ -557,10 +557,10 @@ ISR(TIMER0_COMPB_vect)
 	switch(pwm_state)
 	{
 		case 0:
-			PORTB &= ~(1<<PB1);
+			PORTB &= ~(1<<PB4);
 			break;
 		case 1:
-			PORTB &= ~(1<<PB3);
+			PORTB &= ~(1<<PB1);
 			break;
 		case 2:
 			
